@@ -29,7 +29,13 @@ export function verifyToken(token: string): JWTPayload {
   try {
     return jwt.verify(token, process.env.JWT_SECRET) as JWTPayload;
   } catch (error) {
-    throw new Error('Invalid token');
+    if (error instanceof jwt.JsonWebTokenError) {
+      throw new Error('Invalid token');
+    }
+    if (error instanceof jwt.TokenExpiredError) {
+      throw new Error('Token expired');
+    }
+    throw new Error('Token verification failed');
   }
 }
 
@@ -51,7 +57,7 @@ export function extractTokenFromRequest(request: NextRequest): string | null {
   return authHeader.substring(7); // Remove 'Bearer ' prefix
 }
 
-export function authenticateRequest(request: NextRequest): JWTPayload {
+export async function authenticateRequest(request: NextRequest): Promise<JWTPayload> {
   const token = extractTokenFromRequest(request);
   
   if (!token) {

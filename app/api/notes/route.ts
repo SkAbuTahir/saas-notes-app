@@ -10,7 +10,7 @@ const createNoteSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
     const body = await request.json();
     const { title, content } = createNoteSchema.parse(body);
 
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
 
     const notes = await prisma.note.findMany({
       where: { tenantId: user.tenantId },
@@ -85,10 +85,17 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(notes);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message?.includes('token') || error.message?.includes('Invalid') || error.message?.includes('expired')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    console.error('GET notes error:', error);
     return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
+      { error: 'Internal server error' },
+      { status: 500 }
     );
   }
 }

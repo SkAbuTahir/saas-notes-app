@@ -13,7 +13,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
     const noteId = parseInt(params.id);
 
     if (isNaN(noteId)) {
@@ -38,10 +38,17 @@ export async function GET(
     }
 
     return NextResponse.json(note);
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message?.includes('token') || error.message?.includes('Invalid') || error.message?.includes('expired')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    console.error('GET note error:', error);
     return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
+      { error: 'Internal server error' },
+      { status: 500 }
     );
   }
 }
@@ -51,7 +58,7 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
     const noteId = parseInt(params.id);
     const body = await request.json();
 
@@ -64,30 +71,28 @@ export async function PUT(
 
     const { title, content } = updateNoteSchema.parse(body);
 
-    // Check if note exists and belongs to user's tenant
-    const existingNote = await prisma.note.findFirst({
-      where: {
-        id: noteId,
-        tenantId: user.tenantId,
-      },
-    });
-
-    if (!existingNote) {
-      return NextResponse.json(
-        { error: 'Note not found' },
-        { status: 404 }
-      );
+    // Atomic update with tenant isolation
+    try {
+      const updatedNote = await prisma.note.update({
+        where: { 
+          id: noteId,
+          tenantId: user.tenantId // Ensure tenant isolation in update
+        },
+        data: {
+          ...(title !== undefined && { title }),
+          ...(content !== undefined && { content }),
+        },
+      });
+      return NextResponse.json(updatedNote);
+    } catch (dbError: any) {
+      if (dbError.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Note not found' },
+          { status: 404 }
+        );
+      }
+      throw dbError;
     }
-
-    const updatedNote = await prisma.note.update({
-      where: { id: noteId },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(content !== undefined && { content }),
-      },
-    });
-
-    return NextResponse.json(updatedNote);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -109,7 +114,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
     const noteId = parseInt(params.id);
 
     if (isNaN(noteId)) {
@@ -119,27 +124,31 @@ export async function DELETE(
       );
     }
 
-    // Check if note exists and belongs to user's tenant
-    const existingNote = await prisma.note.findFirst({
-      where: {
-        id: noteId,
-        tenantId: user.tenantId,
-      },
-    });
-
-    if (!existingNote) {
+    // Atomic delete with tenant isolation
+    try {
+      await prisma.note.delete({
+        where: { 
+          id: noteId,
+          tenantId: user.tenantId // Ensure tenant isolation in delete
+        },
+      });
+      return NextResponse.json({ message: 'Note deleted successfully' });
+    } catch (dbError: any) {
+      if (dbError.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Note not found' },
+          { status: 404 }
+        );
+      }
+      throw dbError;
+    }
+  } catch (error: any) {
+    if (error.message?.includes('token') || error.message?.includes('Invalid') || error.message?.includes('expired')) {
       return NextResponse.json(
-        { error: 'Note not found' },
-        { status: 404 }
+        { error: 'Unauthorized' },
+        { status: 401 }
       );
     }
-
-    await prisma.note.delete({
-      where: { id: noteId },
-    });
-
-    return NextResponse.json({ message: 'Note deleted successfully' });
-  } catch (error) {
     console.error('Delete note error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

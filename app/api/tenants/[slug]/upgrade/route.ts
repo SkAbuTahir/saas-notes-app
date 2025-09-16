@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: { slug: string } }
 ) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
 
     // Only admin users can upgrade tenants
     if (user.role !== 'admin') {
@@ -26,18 +26,33 @@ export async function POST(
     }
 
     // Upgrade the tenant to pro plan
-    const updatedTenant = await prisma.tenant.update({
-      where: { slug: params.slug },
-      data: { plan: 'pro' },
-    });
+    try {
+      const updatedTenant = await prisma.tenant.update({
+        where: { 
+          slug: params.slug,
+          id: user.tenantId // Ensure tenant isolation
+        },
+        data: { plan: 'pro' },
+      });
+      
+      return NextResponse.json({
+        message: 'Tenant upgraded to Pro plan successfully',
+        tenant: {
+          slug: updatedTenant.slug,
+          plan: updatedTenant.plan,
+        },
+      });
+    } catch (dbError: any) {
+      if (dbError.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Tenant not found' },
+          { status: 404 }
+        );
+      }
+      throw dbError;
+    }
 
-    return NextResponse.json({
-      message: 'Tenant upgraded to Pro plan successfully',
-      tenant: {
-        slug: updatedTenant.slug,
-        plan: updatedTenant.plan,
-      },
-    });
+
   } catch (error) {
     console.error('Tenant upgrade error:', error);
     return NextResponse.json(

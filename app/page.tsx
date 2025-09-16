@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+import { apiRequest } from '@/lib/api';
 
 interface Note {
   id: number;
@@ -38,14 +37,22 @@ export default function Home() {
   const [showNoteForm, setShowNoteForm] = useState(false);
 
   useEffect(() => {
-    // In a real browser environment, this would use localStorage
-    // For Claude.ai artifacts, we start with no saved token
-    setLoading(false);
+    if (typeof window !== 'undefined') {
+      const savedToken = localStorage.getItem('token');
+      if (savedToken) {
+        setToken(savedToken);
+        fetchUserInfo(savedToken);
+      } else {
+        setLoading(false);
+      }
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   const fetchUserInfo = async (authToken: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/me`, {
+      const response = await apiRequest('/api/me', {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
@@ -57,12 +64,16 @@ export default function Home() {
         setIsAuthenticated(true);
         await fetchNotes(authToken);
       } else {
-        // In real browser: localStorage.removeItem('token');
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token');
+        }
         setToken(null);
       }
     } catch (err) {
       console.error('Failed to fetch user info:', err);
-      // In real browser: localStorage.removeItem('token');
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+      }
       setToken(null);
     } finally {
       setLoading(false);
@@ -71,7 +82,7 @@ export default function Home() {
 
   const fetchNotes = async (authToken: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notes`, {
+      const response = await apiRequest('/api/notes', {
         headers: {
           'Authorization': `Bearer ${authToken}`,
         },
@@ -91,17 +102,16 @@ export default function Home() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      const response = await apiRequest('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ email, password }),
       });
 
       if (response.ok) {
         const { token } = await response.json();
-        // In real browser: localStorage.setItem('token', token);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('token', token);
+        }
         setToken(token);
         await fetchUserInfo(token);
       } else {
@@ -114,7 +124,9 @@ export default function Home() {
   };
 
   const handleLogout = () => {
-    // In real browser: localStorage.removeItem('token');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+    }
     setToken(null);
     setUser(null);
     setIsAuthenticated(false);
@@ -128,10 +140,9 @@ export default function Home() {
     if (!token) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notes`, {
+      const response = await apiRequest('/api/notes', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
@@ -162,7 +173,7 @@ export default function Home() {
     if (!token) return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/notes/${noteId}`, {
+      const response = await apiRequest(`/api/notes/${noteId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -183,7 +194,7 @@ export default function Home() {
     if (!token || !user || user.role !== 'admin') return;
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/tenants/${user.tenantSlug}/upgrade`, {
+      const response = await apiRequest(`/api/tenants/${user.tenantSlug}/upgrade`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -288,7 +299,7 @@ export default function Home() {
 
         <div className="p-6">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Your Notes ({notes.length}/3 for Free plan)</h2>
+            <h2 className="text-xl font-semibold">Your Notes ({notes.length}{user?.tenantSlug && notes.length < 3 ? '/3 for Free plan' : ''})</h2>
             <div className="space-x-2">
               {canUpgrade && (
                 <button

@@ -13,7 +13,7 @@ export async function POST(
   { params }: { params: { slug: string } }
 ) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
     const body = await request.json();
 
     // Only admin users can invite others
@@ -46,8 +46,9 @@ export async function POST(
       );
     }
 
-    // Create new user with default password "password"
-    const hashedPassword = await hashPassword('password');
+    // Create new user with secure temporary password
+    const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
+    const hashedPassword = await hashPassword(tempPassword);
     const newUser = await prisma.user.create({
       data: {
         email,
@@ -57,7 +58,7 @@ export async function POST(
       },
     });
 
-    // Return user info without password
+    // Return user info without password but include temp password for setup
     return NextResponse.json({
       message: 'User invited successfully',
       user: {
@@ -66,6 +67,7 @@ export async function POST(
         role: newUser.role,
         tenantId: newUser.tenantId,
       },
+      temporaryPassword: tempPassword, // In production, send via secure email
     }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {

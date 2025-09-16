@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       email: user.email,
       tenantId: user.tenantId,
-      tenantSlug: user.tenant.slug,
+      tenantSlug: user.tenant?.slug || '',
       role: user.role,
     });
 

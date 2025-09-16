@@ -3,7 +3,7 @@ import { authenticateRequest } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const user = authenticateRequest(request);
+    const user = await authenticateRequest(request);
     
     // Return user info without sensitive data
     return NextResponse.json({
@@ -13,10 +13,17 @@ export async function GET(request: NextRequest) {
       tenantSlug: user.tenantSlug,
       role: user.role,
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.message?.includes('token') || error.message?.includes('Invalid') || error.message?.includes('expired')) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    console.error('Get user info error:', error);
     return NextResponse.json(
-      { error: 'Unauthorized' },
-      { status: 401 }
+      { error: 'Internal server error' },
+      { status: 500 }
     );
   }
 }
